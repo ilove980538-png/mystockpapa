@@ -9,7 +9,7 @@ export default function App() {
   const [cashForm, setCashForm] = useState({ amount: '', note: '', type: 'deposit' });
   const [sellModal, setSellModal] = useState({ isOpen: false, stockId: null, ticker: '', maxShares: 0, sharesToSell: '', sellPrice: '', commission: '' });
 
-  // 🧠 LocalStorage 記憶功能 (確保重新整理後數字還在)
+  // 🧠 LocalStorage 記憶功能
   const [cashBalance, setCashBalance] = useState(() => {
     const saved = localStorage.getItem('v3_cash');
     return saved !== null ? JSON.parse(saved) : 0;
@@ -60,12 +60,27 @@ export default function App() {
     showToast('✨ 買入成功');
   };
 
+  // ⚠️ 剛剛漏掉的就是這段打開賣出視窗的功能！已經補上！
+  const openSellModal = (stock) => {
+    setSellModal({
+      isOpen: true, stockId: stock.id, ticker: stock.ticker, maxShares: stock.shares,
+      sharesToSell: stock.shares, sellPrice: livePrices[stock.ticker] || stock.buyPrice, commission: '' 
+    });
+  };
+
   const handleSellStock = (e) => {
     e.preventDefault();
     const target = portfolio.find(p => p.id === sellModal.stockId);
+    if (!target) return;
     const sellShares = parseFloat(sellModal.sharesToSell);
     const sellPrice = parseFloat(sellModal.sellPrice);
-    const proceeds = (sellPrice * sellShares) - (parseFloat(sellModal.commission) || 0);
+    const sellCommission = parseFloat(sellModal.commission) || 0;
+
+    if (isNaN(sellShares) || sellShares <= 0 || sellShares > target.shares) return showToast(`❌ 賣出股數必須介於 0 到 ${target.shares} 之間`);
+    if (isNaN(sellPrice) || sellPrice <= 0) return showToast('❌ 賣出單價必須大於 0');
+    if (sellCommission < 0) return showToast('❌ 手續費不可為負數');
+
+    const proceeds = (sellPrice * sellShares) - sellCommission;
     if (sellShares === target.shares) { setPortfolio(portfolio.filter(p => p.id !== target.id)); } 
     else { setPortfolio(portfolio.map(p => p.id === target.id ? { ...p, shares: p.shares - sellShares } : p)); }
     setCashBalance(prev => prev + proceeds);
@@ -136,17 +151,17 @@ export default function App() {
                   <button type="button" onClick={()=>setCashForm({...cashForm, type:'deposit'})} className={`flex-1 py-2 rounded-lg text-xs ${cashForm.type==='deposit'?'bg-[#222] text-white':'text-gray-500'}`}>存入</button>
                   <button type="button" onClick={()=>setCashForm({...cashForm, type:'withdraw'})} className={`flex-1 py-2 rounded-lg text-xs ${cashForm.type==='withdraw'?'bg-[#222] text-white':'text-gray-500'}`}>提領</button>
                 </div>
-                <input required type="number" step="any" value={cashForm.amount} onChange={e=>setCashForm({...cashForm, amount: e.target.value})} placeholder="金額 (USD)" className="w-full bg-black border border-white/5 rounded-xl px-4 py-3 text-sm" />
+                <input required type="number" step="any" min="0.01" value={cashForm.amount} onChange={e=>setCashForm({...cashForm, amount: e.target.value})} placeholder="金額 (USD)" className="w-full bg-black border border-white/5 rounded-xl px-4 py-3 text-sm" />
                 <input value={cashForm.note} onChange={e=>setCashForm({...cashForm, note: e.target.value})} placeholder="備註" className="w-full bg-black border border-white/5 rounded-xl px-4 py-3 text-sm" />
-                <button className="w-full bg-blue-600 py-3 rounded-xl font-bold">執行</button>
+                <button className="w-full bg-blue-600 py-3 rounded-xl font-bold hover:bg-blue-500 transition-colors">執行</button>
               </form>
             ) : (
               <form onSubmit={addStock} className="bg-[#111] border border-white/5 p-6 rounded-3xl space-y-4">
                 <input required value={stockForm.ticker} onChange={e=>setStockForm({...stockForm, ticker: e.target.value})} placeholder="股票代號 (例: APLD)" className="w-full bg-black border border-white/5 rounded-xl px-4 py-3 text-sm font-bold uppercase" />
-                <div className="grid grid-cols-2 gap-2"><input required type="number" step="any" value={stockForm.buyPrice} onChange={e=>setStockForm({...stockForm, buyPrice: e.target.value})} placeholder="買入單價" className="bg-black border border-white/5 rounded-xl px-4 py-3 text-sm" /><input required type="number" step="any" value={stockForm.shares} onChange={e=>setStockForm({...stockForm, shares: e.target.value})} placeholder="股數" className="bg-black border border-white/5 rounded-xl px-4 py-3 text-sm" /></div>
-                <input type="number" step="any" value={stockForm.commission} onChange={e=>setStockForm({...stockForm, commission: e.target.value})} placeholder="手續費 (USD)" className="w-full bg-black border border-white/5 rounded-xl px-4 py-3 text-sm" />
+                <div className="grid grid-cols-2 gap-2"><input required type="number" step="any" min="0.001" value={stockForm.buyPrice} onChange={e=>setStockForm({...stockForm, buyPrice: e.target.value})} placeholder="單價" className="bg-black border border-white/5 rounded-xl px-4 py-3 text-sm" /><input required type="number" step="any" min="0.001" value={stockForm.shares} onChange={e=>setStockForm({...stockForm, shares: e.target.value})} placeholder="股數" className="bg-black border border-white/5 rounded-xl px-4 py-3 text-sm" /></div>
+                <input type="number" step="any" min="0" value={stockForm.commission} onChange={e=>setStockForm({...stockForm, commission: e.target.value})} placeholder="手續費 (USD)" className="w-full bg-black border border-white/5 rounded-xl px-4 py-3 text-sm" />
                 <select value={stockForm.owner} onChange={e=>setStockForm({...stockForm, owner: e.target.value})} className="w-full bg-black border border-white/5 rounded-xl px-4 py-3 text-sm"><option value="me">我的帳戶</option><option value="dad">爸爸的帳戶</option></select>
-                <button className="w-full bg-rose-600 py-3 rounded-xl font-bold">買入股票</button>
+                <button className="w-full bg-rose-600 py-3 rounded-xl font-bold hover:bg-rose-500 transition-colors">買入股票</button>
               </form>
             )}
           </aside>
@@ -185,13 +200,13 @@ export default function App() {
       {sellModal.isOpen && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-[#111] border border-white/10 p-8 rounded-3xl w-full max-w-sm relative">
-            <button onClick={() => setSellModal({...sellModal, isOpen: false})} className="absolute top-5 right-5 text-gray-500 text-xl">✕</button>
+            <button onClick={() => setSellModal({...sellModal, isOpen: false})} className="absolute top-5 right-5 text-gray-500 text-xl hover:text-white">✕</button>
             <h3 className="text-xl font-bold text-white mb-6">賣出 {sellModal.ticker}</h3>
             <form onSubmit={handleSellStock} className="space-y-4">
-              <input required type="number" step="any" max={sellModal.maxShares} value={sellModal.sharesToSell} onChange={e=>setSellModal({...sellModal, sharesToSell: e.target.value})} placeholder="賣出股數" className="w-full bg-black border border-white/5 rounded-xl px-4 py-3 text-sm" />
-              <input required type="number" step="any" value={sellModal.sellPrice} onChange={e=>setSellModal({...sellModal, sellPrice: e.target.value})} placeholder="成交價格 (USD)" className="w-full bg-black border border-white/5 rounded-xl px-4 py-3 text-sm" />
-              <input required type="number" step="any" value={sellModal.commission} onChange={e=>setSellModal({...sellModal, commission: e.target.value})} placeholder="賣出手續費" className="w-full bg-black border border-white/5 rounded-xl px-4 py-3 text-sm" />
-              <button className="w-full bg-emerald-600 py-3 rounded-xl font-bold mt-4">確認賣出</button>
+              <input required type="number" step="any" min="0.001" max={sellModal.maxShares} value={sellModal.sharesToSell} onChange={e=>setSellModal({...sellModal, sharesToSell: e.target.value})} placeholder="賣出股數" className="w-full bg-black border border-white/5 rounded-xl px-4 py-3 text-sm text-white" />
+              <input required type="number" step="any" min="0.001" value={sellModal.sellPrice} onChange={e=>setSellModal({...sellModal, sellPrice: e.target.value})} placeholder="成交價格 (USD)" className="w-full bg-black border border-white/5 rounded-xl px-4 py-3 text-sm text-white" />
+              <input required type="number" step="any" min="0" value={sellModal.commission} onChange={e=>setSellModal({...sellModal, commission: e.target.value})} placeholder="賣出手續費" className="w-full bg-black border border-white/5 rounded-xl px-4 py-3 text-sm text-white" />
+              <button className="w-full bg-emerald-600 hover:bg-emerald-500 py-3 rounded-xl font-bold text-white mt-4 transition-colors">確認賣出</button>
             </form>
           </div>
         </div>
